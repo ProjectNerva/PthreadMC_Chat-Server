@@ -8,18 +8,20 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <fstream>
+#include <signal.h> // clean-up operations before termination
 #include <mutex>
 
 //#define PORT 8081
 #define MAX_LEN 200
+#define DIRECTORY_PATH "test_ChatHistory"
 
 // TODO: have another folder read all the online/live connections that can be connected. Displays ip and port #. Maybe security risk. 
-// TODO: chat history txt in completely separate file
-// TODO: display time for text
+// TODO: chat history txt in completely separate file *DOING*
 
 using namespace std;
 
-struct clientInfo{
+struct clientInfo {
     int id;
     string name;
     int socket;
@@ -27,17 +29,19 @@ struct clientInfo{
 };
 
 vector<clientInfo> clients;
+vector<string> history_txt; // history 
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER, cout_mutex = PTHREAD_MUTEX_INITIALIZER;
 int seed = 0;
 
 // function definition
 void set_name(int id, char name[]);
 void shared_print(string str, bool endLine); // synchronization of cout statements (?)
+void handleSignal(int signal);
 int broadcastMessage(string message, int sender_id);
 int broadcastMessage(int num, int sender_id);
 void endConnection(int id);
 void *handleClient(void *arg);
-void saveChatHistory(); // TODO
+void saveChatHistory(string directoryPath, vector<string> txt); // TODO
 string getCurrentTime();
 
 int main(int argc, char *argv[])
@@ -49,6 +53,8 @@ int main(int argc, char *argv[])
     }
 
     int PORT = atoi(argv[1]);
+
+    signal(SIGINT, handleSignal); // Ctrl C bind; signal handler
 
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -65,7 +71,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(PORT);
-    serverAddress.sin_addr.s_addr = inet_addr("169.254.119.129");
+    serverAddress.sin_addr.s_addr = inet_addr("192.168.4.190");
     memset(&serverAddress.sin_zero, 0, sizeof(serverAddress.sin_zero));
 
     // bind the socket
@@ -119,6 +125,8 @@ int main(int argc, char *argv[])
         pthread_create(&clients.back().thread, NULL, handleClient, &clients.back());
     }
 
+    saveChatHistory(DIRECTORY_PATH, history_txt);
+
     close(serverSocket);
     return 0;
 }
@@ -143,6 +151,14 @@ void shared_print(string str, bool endLine = true)
     pthread_mutex_unlock(&cout_mutex);
 }
 
+void handleSignal(int signal)
+{
+    shared_print("Server shutting down...");
+    saveChatHistory(DIRECTORY_PATH, history_txt);
+    shared_print("Chat history saved...");
+    exit(0);
+}
+
 int broadcastMessage(string message, int sender_id)
 {
     char temp[MAX_LEN];
@@ -157,6 +173,7 @@ int broadcastMessage(string message, int sender_id)
     }
 
     pthread_mutex_unlock(&clients_mutex);
+
     return 0;
 }
 
@@ -172,6 +189,7 @@ int broadcastMessage(int num, int sender_id)
     }
 
     pthread_mutex_unlock(&clients_mutex);
+
     return 0;
 }
 
@@ -199,14 +217,18 @@ void *handleClient(void *arg)
     int id = client->id;
     char name[MAX_LEN], buffer[MAX_LEN];
 
-    // Receive and set client name
+    // receive and set client name
     recv(clientSocket, name, sizeof(name), 0);
     set_name(id, name);
 
-    // Display welcome message
+    // display welcome message
     string welcome_message = getCurrentTime() + " " + string(name) + " has joined";
     broadcastMessage(welcome_message, id);
     shared_print(welcome_message);
+
+    //pthread_mutex_lock(&cout_mutex);
+    history_txt.push_back(welcome_message);
+    //pthread_mutex_unlock(&cout_mutex);
 
     while (true)
     {
@@ -220,6 +242,11 @@ void *handleClient(void *arg)
             broadcastMessage(leave_message, id);
             shared_print(leave_message);
             endConnection(id);
+
+                //pthread_mutex_lock(&cout_mutex);
+                history_txt.push_back(leave_message);
+                //pthread_mutex_unlock(&cout_mutex);
+
             break;
         }
 
@@ -227,15 +254,45 @@ void *handleClient(void *arg)
         string message = getCurrentTime() + " " + string(name) + ": " + string(buffer);
         shared_print(message);
         broadcastMessage(message, id);
+        
+        //pthread_mutex_lock(&cout_mutex);
+        history_txt.push_back(message);
+        //pthread_mutex_unlock(&cout_mutex);
     }
 
     pthread_exit(NULL);
     return NULL;
 }
 
-void saveChatHistory()
+// collect from a vector of string of text and have it iterate to write on the thing 
+void saveChatHistory(string directoryPath, vector<string> txt)
 {
+    string timestamp = getCurrentTime();
+    replace(timestamp.begin(), timestamp.end(), ':', '-');
+    replace(timestamp.begin(), timestamp.end(), ' ', '_');
 
+    // have a new file_txtHistory.txt be created with the date of creation on it, as it always should be
+    string fileName = "file_txtHistory" + timestamp + ".htxt";
+
+    ofstream outfile(directoryPath + "/" + fileName);
+
+    // catch error
+    if (outfile.is_open())
+    {
+        // actually writing it into the file 
+        for (int i = 0; i < txt.size(); i++)
+        {
+            outfile << txt[i] << endl;
+        }
+
+        cout << "File saved successfully" << endl;
+
+        outfile.close();
+    }
+    else
+    {
+        cerr << "error: Cannot open file to save chat history" << endl;
+    }
 }
 
 string getCurrentTime()
