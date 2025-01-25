@@ -12,9 +12,9 @@
 #include <signal.h> // clean-up operations before termination
 #include <mutex>
 
-//#define PORT 8081
 #define MAX_LEN 200
 #define DIRECTORY_PATH "test_ChatHistory"
+#define NUM_COLORS 5
 
 // TODO: have another folder read all the online/live connections that can be connected. Displays ip and port #. Maybe security risk. 
 // TODO: chat history txt in completely separate file *DOING*
@@ -30,11 +30,16 @@ struct clientInfo {
 
 vector<clientInfo> clients;
 vector<string> history_txt; // history 
+string norm_color = "\033[0m"; // normal color
+string error_color = "\033[31m"; // error color
+string success_color = "\033[32m";
+string colors[] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m","\033[36m"};
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER, cout_mutex = PTHREAD_MUTEX_INITIALIZER;
 int seed = 0;
 
 // function definition
 void set_name(int id, char name[]);
+string color(int code);
 void shared_print(string str, bool endLine); // synchronization of cout statements (?)
 void handleSignal(int signal);
 int broadcastMessage(string message, int sender_id);
@@ -48,7 +53,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        cerr << "usage: port" <<  endl;
+        cerr << error_color << "usage: port" << norm_color <<  endl;
         exit(0);
     }
 
@@ -65,7 +70,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        cout << "Socket creation success..." << endl;
+        cout << success_color << "Socket creation success..." << norm_color << endl;
     }
     
     struct sockaddr_in serverAddress;
@@ -82,7 +87,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        cout << "Bind success..." << endl;
+        cout << success_color << "Bind success..." << norm_color << endl;
     }
 
     // listening for connections
@@ -93,7 +98,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        cout << "Listen success..." << endl;
+        cout << success_color << "Listen success..." << norm_color << endl;
     }
 
     cout << "Setup complete" << endl;
@@ -103,7 +108,7 @@ int main(int argc, char *argv[])
     unsigned int len = sizeof(sockaddr_in); // 16 (?/)
 
     cout << "Connected to chatroom!" << endl;
-    cout << " ======== Welcome to Chatroom ======== " << endl;
+    cout << colors[NUM_COLORS-1] << " ======== Welcome to Chatroom ======== " << endl << norm_color;
 
     while(1)
     {
@@ -143,6 +148,11 @@ void set_name(int id, char name[])
     }
 }
 
+string color(int code)
+{
+    return colors[code%NUM_COLORS];
+}
+
 void shared_print(string str, bool endLine = true)
 {
     pthread_mutex_lock(&cout_mutex);
@@ -155,7 +165,7 @@ void handleSignal(int signal)
 {
     shared_print("Server shutting down...");
     saveChatHistory(DIRECTORY_PATH, history_txt);
-    shared_print("Chat history saved...");
+    shared_print(success_color + "Chat history saved..." + norm_color);
     exit(0);
 }
 
@@ -222,13 +232,11 @@ void *handleClient(void *arg)
     set_name(id, name);
 
     // display welcome message
-    string welcome_message = getCurrentTime() + " " + string(name) + " has joined";
+    string welcome_message = getCurrentTime() + " " + color(id-1) + string(name) + " has joined" + norm_color;
     broadcastMessage(welcome_message, id);
     shared_print(welcome_message);
 
-    //pthread_mutex_lock(&cout_mutex);
     history_txt.push_back(welcome_message);
-    //pthread_mutex_unlock(&cout_mutex);
 
     while (true)
     {
@@ -238,26 +246,22 @@ void *handleClient(void *arg)
 
         if (bytes_received <= 0 || strcmp(buffer, "#exit") == 0)
         {
-            string leave_message = getCurrentTime() + " " + string(name) + " has left";
+            string leave_message = getCurrentTime() + " " + color(id-1) + string(name) + " has left" + norm_color;
             broadcastMessage(leave_message, id);
             shared_print(leave_message);
             endConnection(id);
 
-                //pthread_mutex_lock(&cout_mutex);
                 history_txt.push_back(leave_message);
-                //pthread_mutex_unlock(&cout_mutex);
 
             break;
         }
 
         buffer[bytes_received] = '\0'; // Null-terminate the received string
-        string message = getCurrentTime() + " " + string(name) + ": " + string(buffer);
+        string message = getCurrentTime() + " " + color(id-1) + string(name) + norm_color + ": " + string(buffer);
         shared_print(message);
         broadcastMessage(message, id);
         
-        //pthread_mutex_lock(&cout_mutex);
         history_txt.push_back(message);
-        //pthread_mutex_unlock(&cout_mutex);
     }
 
     pthread_exit(NULL);
