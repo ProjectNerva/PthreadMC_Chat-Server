@@ -17,7 +17,6 @@
 #define NUM_COLORS 5
 
 // TODO: have another folder read all the online/live connections that can be connected. Displays ip and port #. Maybe security risk. 
-// TODO: chat history txt in completely separate file *DOING*
 
 using namespace std;
 
@@ -232,11 +231,12 @@ void *handleClient(void *arg)
     set_name(id, name);
 
     // display welcome message
-    string welcome_message = getCurrentTime() + " " + color(id-1) + string(name) + " has joined" + norm_color;
-    broadcastMessage(welcome_message, id);
-    shared_print(welcome_message);
-
+    string welcome_message_colored = getCurrentTime() + " " + color(id-1) + string(name) + " has joined" + norm_color;
+    string welcome_message = getCurrentTime() + " " + string(name) + " has joined";
     history_txt.push_back(welcome_message);
+    broadcastMessage(welcome_message_colored, id);
+    shared_print(welcome_message_colored);
+
 
     while (true)
     {
@@ -246,20 +246,22 @@ void *handleClient(void *arg)
 
         if (bytes_received <= 0 || strcmp(buffer, "#exit") == 0)
         {
-            string leave_message = getCurrentTime() + " " + color(id-1) + string(name) + " has left" + norm_color;
-            broadcastMessage(leave_message, id);
-            shared_print(leave_message);
+            string leave_message = getCurrentTime() + " " + string(name) + " has left";
+            string leave_message_colored = getCurrentTime() + " " + color(id-1) + string(name) + " has left" + norm_color;
+            broadcastMessage(leave_message_colored, id);
+            shared_print(leave_message_colored);
             endConnection(id);
 
-                history_txt.push_back(leave_message);
+            history_txt.push_back(leave_message);
 
             break;
         }
 
         buffer[bytes_received] = '\0'; // Null-terminate the received string
-        string message = getCurrentTime() + " " + color(id-1) + string(name) + norm_color + ": " + string(buffer);
-        shared_print(message);
-        broadcastMessage(message, id);
+        string message = getCurrentTime() + " " + string(name) + ": " + string(buffer);
+        string message_colored = getCurrentTime() + " " + color(id-1) + string(name) + norm_color + ": " + string(buffer);
+        shared_print(message_colored);
+        broadcastMessage(message_colored, id);
         
         history_txt.push_back(message);
     }
